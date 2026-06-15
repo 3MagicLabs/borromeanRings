@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+
+# borromeo audit plumbing — receipts are per-run artifacts, not source
+.meta-harness/receipts/
+
+# CS130 knowledge base — reference material that informed the build, not borromeo's product code.
+# Untracked by default; remove this line if you want it versioned with the repo.
+cs130/
