@@ -5,10 +5,10 @@ from meta_harness.prompt_rewrite import build_directive
 
 def test_directive_includes_declared_context() -> None:
     directive = build_directive(
-        {"account": "3MagicLabs/borromeo", "value_priorities": ["correctness", "security"]}
+        {"account": "3MagicLabs/borromeanrings", "value_priorities": ["correctness", "security"]}
     )
     assert "preserve its intent" in directive
-    assert "3MagicLabs/borromeo" in directive
+    assert "3MagicLabs/borromeanrings" in directive
     assert "correctness, security" in directive
     assert "confirm or edit" in directive  # propose, don't auto-apply
 
