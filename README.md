@@ -1,5 +1,8 @@
 # borromeanRings
 
+[![borromeanRings gate](https://github.com/3MagicLabs/borromeanrings/actions/workflows/verify.yml/badge.svg)](https://github.com/3MagicLabs/borromeanrings/actions/workflows/verify.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 A model- and harness-agnostic **meta-harness**: a governing quality layer that
 wraps any AI coding agent and enforces engineering standards as **deterministic
 gates** — not prompt requests. The agent is an interchangeable worker; the gate
