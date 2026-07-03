@@ -15,6 +15,7 @@ Fail-open by design: on any filesystem error the caller proceeds. A lost
 dedupe merely duplicates work; a false dedupe would silently drop governance.
 """
 
+import contextlib
 import hashlib
 import os
 import time
@@ -44,8 +45,7 @@ def claim(
         claim is stale); False if a fresh claim exists — a duplicate
         registration already handled this occurrence.
     """
-    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-    marker = marker_dir / f"{event}-{digest}"
+    marker = _marker_path(marker_dir, event, key)
     now = time.time()
 
     try:
@@ -69,3 +69,24 @@ def claim(
 
     os.close(fd)
     return True
+
+
+def release(marker_dir: Path, event: str, key: str) -> None:
+    """Remove a claim so the next occurrence of this event starts fresh.
+
+    A claimant whose work is *slow and must re-run on every legitimate
+    occurrence* (the Stop gate) releases its claim when it finishes: while the
+    work is in flight the marker shadows the duplicate registration, and after
+    release the next real occurrence claims immediately — the freshness window
+    then only covers duplicate-arrival skew and crash recovery, so it can stay
+    small without ever shadowing a legitimate re-run. Best-effort: releasing a
+    marker that is already gone (or unremovable) is not an error.
+    """
+    # A lingering marker just expires via the window; never fail the hook.
+    with contextlib.suppress(OSError):
+        _marker_path(marker_dir, event, key).unlink(missing_ok=True)
+
+
+def _marker_path(marker_dir: Path, event: str, key: str) -> Path:
+    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+    return marker_dir / f"{event}-{digest}"

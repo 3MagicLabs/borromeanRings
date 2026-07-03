@@ -1,5 +1,7 @@
 # Shared helpers for borromeanRings's substrate hooks. Sourced, not executed.
-# Callers define BORROMEANRINGS_HOME and PROJECT_DIR before sourcing.
+# Callers using borromeanrings_claim/borromeanrings_release define
+# BORROMEANRINGS_HOME and PROJECT_DIR before calling them; the other helpers
+# need neither.
 
 # borromeanrings_bounded <secs> <command...>
 # Run <command> under a wall-clock bound via coreutils `timeout` (or `gtimeout`).
@@ -34,11 +36,14 @@ borromeanrings_read_stdin() {
 # the event occurrence. The same hook can be registered twice (project-level +
 # the user-level install-global.sh entry); non-idempotent hooks call this so
 # the duplicate yields. First-writer-wins with a freshness window
-# (BORROMEANRINGS_HOOK_DEDUPE_WINDOW seconds, default 5). Fail-open: any error
-# means "proceed".
+# (BORROMEANRINGS_HOOK_DEDUPE_WINDOW seconds, default 5). Fail-open by
+# construction: the verdict is the script's OUTPUT — the caller yields only on
+# an explicit "yield", so a dedupe infrastructure failure (python missing,
+# marker dir unwritable, crash) means "proceed", never "skip governance".
 borromeanrings_claim() {
-  PYTHONPATH="$BORROMEANRINGS_HOME/src" python3 - "$PROJECT_DIR" "$1" "$2" \
-    "${BORROMEANRINGS_HOOK_DEDUPE_WINDOW:-5}" <<'PY'
+  local verdict
+  verdict="$(PYTHONPATH="$BORROMEANRINGS_HOME/src" python3 - "$PROJECT_DIR" "$1" "$2" \
+    "${BORROMEANRINGS_HOOK_DEDUPE_WINDOW:-5}" 2>/dev/null <<'PY'
 import sys
 from pathlib import Path
 
@@ -49,6 +54,25 @@ try:
     ok = claim(markers, sys.argv[2], sys.argv[3], window_seconds=float(sys.argv[4]))
 except Exception:
     ok = True  # fail-open: never drop governance over a dedupe error
-sys.exit(0 if ok else 1)
+print("proceed" if ok else "yield")
+PY
+  )" || verdict="proceed"
+  [ "$verdict" != "yield" ]
+}
+
+# borromeanrings_release <event> <key> — drop this invocation's claim so the
+# next legitimate occurrence starts fresh (see hook_dedupe.release). Call it
+# ONLY after winning the claim; best-effort, never fails the hook.
+borromeanrings_release() {
+  PYTHONPATH="$BORROMEANRINGS_HOME/src" python3 - "$PROJECT_DIR" "$1" "$2" 2>/dev/null <<'PY' || true
+import sys
+from pathlib import Path
+
+try:
+    from meta_harness.hook_dedupe import release
+
+    release(Path(sys.argv[1]) / ".meta-harness" / "hook_markers", sys.argv[2], sys.argv[3])
+except Exception:
+    pass  # a lingering marker just expires via the freshness window
 PY
 }

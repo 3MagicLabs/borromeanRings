@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from meta_harness.hook_dedupe import claim
+from meta_harness.hook_dedupe import claim, release
 
 BORROMEANRINGS_HOME = Path(__file__).resolve().parents[1]
 HOOKS = BORROMEANRINGS_HOME / ".claude" / "hooks"
@@ -81,6 +81,30 @@ def test_vanished_marker_fails_open(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(os, "open", race)
     # os.open says the marker exists; the real stat() then finds nothing there.
     assert claim(markers, "stop", "session-1") is True
+
+
+def test_release_lets_the_next_occurrence_claim(tmp_path: Path) -> None:
+    markers = tmp_path / "markers"
+    assert claim(markers, "stop", "session-1") is True
+    release(markers, "stop", "session-1")
+    assert claim(markers, "stop", "session-1") is True  # no window to wait out
+
+
+def test_release_of_unclaimed_marker_is_a_no_op(tmp_path: Path) -> None:
+    release(tmp_path / "markers", "stop", "never-claimed")  # must not raise
+
+
+def test_release_swallows_filesystem_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    markers = tmp_path / "markers"
+    assert claim(markers, "stop", "session-1") is True
+
+    def boom(self: Path, missing_ok: bool = False) -> None:
+        raise PermissionError("no")
+
+    monkeypatch.setattr(Path, "unlink", boom)
+    release(markers, "stop", "session-1")  # must not raise
 
 
 # --- integration: the prompt-rewrite hook emits the directive once -----------
@@ -144,3 +168,38 @@ def test_empty_payload_still_emits_directive(tmp_path: Path) -> None:
         env=env,
     )
     assert "[borromeanRings]" in result.stdout
+
+
+# --- integration: the Stop gate re-runs for every legitimate Stop ------------
+
+
+def test_stop_gate_reruns_after_a_fast_retry(tmp_path: Path) -> None:
+    """The dedupe claim must never shadow the NEXT legitimate Stop.
+
+    Regression for the fast-gate bypass: with a time-window-only claim, a gate
+    that fails quickly followed by a fast agent retry landed the second Stop
+    inside the window — deduped away, exit 0, no gate run (fail-open). The
+    winner now releases its claim on exit, so back-to-back Stops each run the
+    gate; only the concurrent duplicate registration is shadowed.
+    """
+    (tmp_path / "borromeanrings.toml").write_text(
+        '[project]\nlanguage = "none"\npackage = "x"\n\n'
+        '[checks]\nrequired = ["05_hygiene"]\n\n'
+        '[hygiene]\nrequires = ["does-not-exist.md"]\n'  # gate fails, fast
+    )
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = str(tmp_path)
+    payload = json.dumps({"session_id": "fast-retry", "stop_hook_active": False})
+
+    for expected_attempts in ("1", "2"):
+        result = subprocess.run(
+            ["bash", str(HOOKS / "stop_gate.sh")],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+        assert result.returncode == 2, f"gate should have run and blocked: {result.stderr}"
+        counter = tmp_path / ".meta-harness" / "stop_attempts" / "fast-retry"
+        assert counter.read_text() == expected_attempts

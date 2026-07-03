@@ -25,8 +25,13 @@ fi
 
 # Duplicate-registration dedupe: with both a project-level and the user-level
 # hook entry active, this script runs TWICE per Stop — the gate would run twice
-# and the retry counter below would double-count toward CAP. First claim wins.
+# and the retry counter below would double-count toward CAP. First claim wins;
+# the winner RELEASES on exit so the claim only shadows the concurrent
+# duplicate (and, briefly, a crashed run) — never the next legitimate Stop,
+# however fast the retry loop turns around. Losing must not release the
+# winner's marker, so the trap is set only after the claim is won.
 borromeanrings_claim stop "$session_id" || exit 0
+trap 'borromeanrings_release stop "$session_id"' EXIT TERM INT
 
 # No-op guard: if the governed input state is identical to the last proven-green
 # state (e.g. the agent only answered a question), skip the full gate — re-running
@@ -58,10 +63,16 @@ attempts="$(cat "$counter_file" 2>/dev/null || echo 0)"
 # Bounded: a hanging check inside the gate must fail closed here, not park this
 # hook (and its children) until the substrate's own hook timeout — or forever.
 # Keep the bound under the Stop hook's 600s budget in .claude/settings.json.
-if summary="$(BORROMEANRINGS_PROJECT="$PROJECT_DIR" borromeanrings_bounded \
-  "${BORROMEANRINGS_GATE_TIMEOUT:-540}" bash "$BORROMEANRINGS_HOME/verify.sh" 2>&1)"; then
+summary="$(BORROMEANRINGS_PROJECT="$PROJECT_DIR" borromeanrings_bounded \
+  "${BORROMEANRINGS_GATE_TIMEOUT:-540}" bash "$BORROMEANRINGS_HOME/verify.sh" 2>&1)"
+gate_code=$?
+if [ "$gate_code" -eq 0 ]; then
   rm -f "$counter_file"
   exit 0
+fi
+if [ "$gate_code" -eq 124 ]; then
+  summary="$summary
+(gate TIMED OUT after ${BORROMEANRINGS_GATE_TIMEOUT:-540}s wall-clock — a check is hanging; treated as FAIL, fail-closed)"
 fi
 
 attempts=$((attempts + 1))
