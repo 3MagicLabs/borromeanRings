@@ -1,7 +1,7 @@
 # SPEC — Collaboration governance (branching, review, commits, skills, distribution)
 
-> Status: **proposed** (awaiting Maintainer approval; increment 0 — the `dev` branch,
-> its protection, and default-branch switch — is live). See ADR-0021 (branching model).
+> Status: **approved** (Maintainer delegated review-and-continue, 2026-07; increment 0 —
+> the `dev` branch, its protection, and default-branch switch — is live). See ADR-0021.
 > Umbrella spec: each increment lands as its own gated PR into `dev`.
 
 ## 1. Purpose
@@ -40,9 +40,9 @@ review**. When the team grows, flip to required cross-review by raising the decl
 ## 4. Tier A contract (increment 1)
 | Piece | Contract |
 |---|---|
-| `08_branch` (shared check) | Fail if the current branch matches none of the declared `branch_patterns` (default: `feature/*, fix/*, docs/*, chore/*, hotfix/*`). **Skips** on the declared protected branches (`main`, `dev`) — CI runs there post-merge — and in detached-HEAD CI states. |
+| `08_branch` (shared check) | Fail if the current branch matches none of the declared `branch_patterns` (default: `feat/*, feature/*, fix/*, docs/*, chore/*, refactor/*, perf/*, test/*, ci/*, hotfix/*` — `feat/*` included because it is this repo's own convention). **Skips** on the declared protected branches (`main`, `dev`) — CI runs there post-merge — and in detached-HEAD CI states. |
 | `09_commits` (shared check) | Fail if any commit on `base..HEAD` (base = merge-base with `dev`, falling back to `main`) violates Conventional Commits (`type(scope)?: subject`, declared `commit_types`, subject length bound). Merge commits exempt. |
-| `branch_guard.sh` (PreToolUse hook) | Deny `git commit`/`git push` while on a protected branch (local aid, same pattern as the git-identity guard; the platform protection is the backstop). Bounded stdin + dedupe conventions from `.claude/hooks/_lib.sh` apply. |
+| Protected-branch guard (extends `pre_bash_guard.sh`) | Deny `git commit`/`git push` while on a protected branch (local aid, same pattern as the git-identity guard; the platform protection is the backstop). Lives in the existing PreToolUse hook — same event and matcher, no new registration surface. |
 | `[collaboration]` config | `protected_branches = ["main", "dev"]`, `branch_patterns = [...]`, `commit_types = ["feat","fix","refactor","docs","test","chore","perf","ci"]`, `subject_max_length = 72`. Empty/absent table ⇒ checks skip (undeclared projects unaffected). |
 Logic lives in `meta_harness.collaboration` (pure functions: `branch_violation()`,
 `commit_violations()`), unit-tested to the coverage baseline; checks stay thin adapters.
