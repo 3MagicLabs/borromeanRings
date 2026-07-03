@@ -9,11 +9,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BORROMEANRINGS_HOME="$(cd "$HERE/../.." && pwd)"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 CAP=3   # max retry attempts before escalating to the human
+. "$HERE/_lib.sh"
 
 # Safe to install globally: do nothing unless this workspace is borromeanRings-governed.
 [ -f "$PROJECT_DIR/borromeanrings.toml" ] || exit 0
 
-input="$(cat)"
+input="$(borromeanrings_read_stdin)"
 read -r stop_active session_id <<EOF
 $(printf '%s' "$input" | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d.get('stop_hook_active', False)).lower(), d.get('session_id','default'))" 2>/dev/null || echo "false default")
 EOF
@@ -21,6 +22,11 @@ EOF
 if [ "$stop_active" = "true" ]; then
   exit 0
 fi
+
+# Duplicate-registration dedupe: with both a project-level and the user-level
+# hook entry active, this script runs TWICE per Stop — the gate would run twice
+# and the retry counter below would double-count toward CAP. First claim wins.
+borromeanrings_claim stop "$session_id" || exit 0
 
 # No-op guard: if the governed input state is identical to the last proven-green
 # state (e.g. the agent only answered a question), skip the full gate — re-running
@@ -49,7 +55,11 @@ mkdir -p "$attempt_dir"
 counter_file="$attempt_dir/$session_id"
 attempts="$(cat "$counter_file" 2>/dev/null || echo 0)"
 
-if summary="$(BORROMEANRINGS_PROJECT="$PROJECT_DIR" bash "$BORROMEANRINGS_HOME/verify.sh" 2>&1)"; then
+# Bounded: a hanging check inside the gate must fail closed here, not park this
+# hook (and its children) until the substrate's own hook timeout — or forever.
+# Keep the bound under the Stop hook's 600s budget in .claude/settings.json.
+if summary="$(BORROMEANRINGS_PROJECT="$PROJECT_DIR" borromeanrings_bounded \
+  "${BORROMEANRINGS_GATE_TIMEOUT:-540}" bash "$BORROMEANRINGS_HOME/verify.sh" 2>&1)"; then
   rm -f "$counter_file"
   exit 0
 fi
