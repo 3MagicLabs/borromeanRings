@@ -1,5 +1,12 @@
 # borromeanRings
 
+<p align="center">
+  <img src="docs/borromean-rings.png" width="200" alt="Borromean rings — three links that hold only together; remove any one and the whole comes apart">
+</p>
+
+> Like the rings, the gates hold only together: remove any one check and the
+> guarantee falls apart.
+
 [![borromeanRings gate](https://github.com/3MagicLabs/borromeanrings/actions/workflows/verify.yml/badge.svg)](https://github.com/3MagicLabs/borromeanrings/actions/workflows/verify.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -55,11 +62,17 @@ step-by-step way to exercise every feature on a fresh project.
 | # | Check | Tool |
 |---|---|---|
 | 00 | build / importable | `python -m compileall` + import |
+| 05 | hygiene | required engineering surround (docs, CI, container, license) exists |
+| 07 | layout | repo layout — specs dir, root-`.md` allowlist, grouped test suites |
 | 10 | format | `ruff format --check` |
 | 20 | lint | `ruff check` |
 | 30 | typecheck | `mypy` (strict) |
 | 40 | test + coverage **ratchet** | `pytest --cov` (no absolute % target) |
 | 50 | security | `bandit` |
+
+The required set is declared in `borromeanrings.toml` `[checks].required` (eight gates
+on this repo; `06_git_identity` exists but is intentionally excluded so external
+contributors pass CI — see ADR-0019).
 
 ## Layout
 
