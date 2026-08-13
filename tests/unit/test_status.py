@@ -111,8 +111,9 @@ def test_build_status_reports_adoption_drift() -> None:
         has_changelog=True,
         last_verdict=Verdict(ok=True),
     )
-    assert s.missing_recommended  # non-empty
-    assert "drift" in s.note
+    # all 5 recommended checks are missing here ⇒ the note reports the exact count.
+    assert len(s.missing_recommended) == 5
+    assert "drift: +5" in s.note
 
 
 def test_build_status_names_failing_checks() -> None:
@@ -167,6 +168,13 @@ def test_discover_finds_governed_and_skips_vendor(tmp_path: Path) -> None:
 
 def test_discover_ignores_missing_root(tmp_path: Path) -> None:
     assert discover_projects([tmp_path / "does-not-exist"]) == []
+
+
+def test_discover_continues_past_a_missing_root(tmp_path: Path) -> None:
+    # a missing root is skipped (continue), it must not abort the whole scan (break).
+    _write_project(tmp_path / "real")
+    found = discover_projects([tmp_path / "missing", tmp_path])
+    assert any(p.name == "real" for p in found)
 
 
 def test_discover_respects_max_depth(tmp_path: Path) -> None:
@@ -244,24 +252,46 @@ def test_gather_bad_config_degrades_to_note(tmp_path: Path) -> None:
 # --- render / summarize / main ---------------------------------------------
 
 
-def test_render_empty_and_nonempty() -> None:
-    assert "no governed" in render([]).lower()
-    s = ProjectStatus("/x/proj", True, False, 2, "pass", (), "")
-    out = render([s])
-    assert "PROJECT" in out
-    assert "proj" in out
+def test_render_empty_is_exact() -> None:
+    assert render([]) == "no governed projects found."
 
 
-def test_summarize_counts() -> None:
+def test_render_row_shows_every_field() -> None:
+    out = render([ProjectStatus("/x/proj", True, False, 2, "pass", (), "a note")])
+    lines = out.splitlines()
+    # header names all columns; the row carries git/req/verdict/note verbatim.
+    assert lines[0].split() == ["PROJECT", "GIT", "REQ", "VERDICT", "NOTES"]
+    row = lines[2]
+    assert "/x/proj" in row
+    assert "yes" in row
+    assert "2" in row
+    assert "pass" in row
+    assert "a note" in row
+    # a non-git row renders "NO", not "yes".
+    no = render([ProjectStatus("/y", False, False, 1, "fail", (), "")]).splitlines()[2]
+    assert "NO" in no
+
+
+def test_render_shortens_home_paths() -> None:
+    home = str(Path.home())
+    out = render([ProjectStatus(f"{home}/sub/proj", True, False, 1, "pass", (), "")])
+    assert "~/sub/proj" in out
+
+
+def test_summarize_counts_every_field() -> None:
     rows = [
         ProjectStatus("/a", True, False, 5, "pass", (), ""),
         ProjectStatus("/b", True, False, 5, "fail", (), ""),
         ProjectStatus("/c", False, False, 5, "never", ("12_secrets",), "not a git repo"),
+        ProjectStatus("/d", True, False, 5, "pass", ("33_coupling",), "drift: +1"),
     ]
     line = summarize(rows)
-    assert "3 governed" in line
-    assert "1 green" in line
+    # every count is asserted so a mutation of any one of them is caught.
+    assert "4 governed" in line
+    assert "2 green" in line
     assert "1 failing" in line
+    assert "1 never-gated" in line
+    assert "2 drifted" in line
     assert "1 non-git" in line
 
 

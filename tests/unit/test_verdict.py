@@ -31,6 +31,42 @@ def test_write_creates_evidence_dir(tmp_path: Path) -> None:
     assert got.checks == (("50_security", "fail"),)
 
 
+def test_write_creates_nested_project_dirs(tmp_path: Path) -> None:
+    # the project root itself may not exist yet ⇒ parent dirs must be created.
+    proj = tmp_path / "new" / "proj"
+    write_last_verdict(proj, Verdict(ok=True))
+    assert read_last_verdict(proj) == Verdict(ok=True)
+
+
+def test_written_file_is_pretty_printed(tmp_path: Path) -> None:
+    # evidence is human-readable (indented), not a single dense line.
+    write_last_verdict(tmp_path, Verdict(ok=True, checks=(("00_build", "pass"),)))
+    text = (tmp_path / LAST_VERDICT_FILE).read_text(encoding="utf-8")
+    assert "\n  " in text
+
+
+def test_read_verdict_without_checks_key_defaults_empty(tmp_path: Path) -> None:
+    path = tmp_path / LAST_VERDICT_FILE
+    path.parent.mkdir(parents=True)
+    path.write_text('{"ok": true}', encoding="utf-8")
+    v = read_last_verdict(tmp_path)
+    assert v == Verdict(ok=True, checks=())
+    # absent run_id/digest default to "" — not the string "None".
+    assert v is not None
+    assert v.run_id == ""
+    assert v.digest == ""
+
+
+def test_read_excludes_malformed_check_pairs(tmp_path: Path) -> None:
+    path = tmp_path / LAST_VERDICT_FILE
+    path.parent.mkdir(parents=True)
+    # "xy" is length-2 but not a list/tuple ⇒ must be excluded (and-not-or).
+    path.write_text('{"ok": true, "checks": [["a", "b"], "xy"]}', encoding="utf-8")
+    got = read_last_verdict(tmp_path)
+    assert got is not None
+    assert got.checks == (("a", "b"),)
+
+
 def test_read_missing_returns_none(tmp_path: Path) -> None:
     assert read_last_verdict(tmp_path) is None
 
