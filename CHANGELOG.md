@@ -12,6 +12,9 @@ queue is merged.
 
 ## [Unreleased]
 
+### Changed
+- What borromeanRings injects into an agent's context is 771 bytes lighter: the prompt-rewrite directive tightened from 862 to 690 bytes with every obligation intact (asserted by a new test that pins the duties rather than the prose), and the Stop hook's three verdict messages trimmed from 435 to 336. Measured against the `19_context_budget` baseline (32,174 bytes): the tree now measures 32,123, i.e. under it (#135).
+
 ### Added
 - Claude Code plugin distribution: `.claude-plugin/plugin.json`, a self-hosted single-plugin marketplace, `hooks/hooks.json` wiring the six hooks through `${CLAUDE_PLUGIN_ROOT}` (scripts unchanged), project skills exposed by symlink; one-line install from a checkout or the GitHub URL, per-project opt-in untouched. `docs/PLUGIN.md` (ADR-0057, #136).
 - PreCompact snapshot + SessionStart(compact|resume) re-injection of the governance brief (last verdict, open obligations, enforcement, identity policy) so gate state survives context compaction; hook-event inventory in `docs/HOOK-EVENTS.md` (ADR-0053, #137).
