@@ -28,6 +28,29 @@ queue is merged.
   mutmut skips: it reads `.claude/`, which mutmut's `mutants/` copy lacks).
 
 ### Added
+- Branch policy enforcement (ADR-0058, #75) — nothing lands on a declared
+  `[collaboration].protected_branches` branch except via PR + gate, at two layers. The
+  PreToolUse guard now hands every git command to `meta_harness.trunk_policy` (pure,
+  one exact-value test per matrix row) and denies, with a fix hint, a commit/merge/
+  rebase/cherry-pick/reset while ON a protected branch, a push to a protected ref in
+  any spelling (`origin main`, `HEAD:main`, `+main`, `refs/heads/main`, `--delete`,
+  `--all`, `--force-with-lease`), and a local delete/force-move of one (`branch -D`,
+  `checkout -B`, `update-ref`). It is never narrower than the substring guard it
+  replaces (the floor is kept). `08_branch` gains the backstop: it fails when a protected
+  branch carries commits its remote ref lacks. `docs/specs/SPEC-branch-policy.md` holds
+  the full command matrix and the `gh api` command for server-side protection (#60,
+  documented, not run).
+  After adversarial review (PR #169): git aliases are resolved through the repo's
+  config and judged by their expansion (opaque `!` aliases refused conservatively),
+  planting a branch-writing alias is refused in every scope (`git config`, `-c`,
+  `GIT_CONFIG_*`, plus a floor on config/alias mentions with a verb), and each
+  invocation is judged in its effective directory (`cd …`, `-C`, `--git-dir`), reading
+  HEAD there — an unresolvable directory is judged as the protected branch checked out
+  in any worktree. Re-review: a `!` shell alias is judged as the command git runs (its
+  text plus the trailing words, e.g. `git sp origin main` ⇒ `git push origin main`) with
+  a verb-plus-protected-argument floor, and the policy applies only inside the governed
+  repo (same `--git-common-dir`, worktrees included) — an unrelated sibling repo on
+  `main` is no longer refused.
 - Context-budget ratchet (ADR-0055, issue #135): `19_context_budget` +
   `meta_harness.context_budget` measure what borromeanRings **itself** puts into the
   agent's context — the prompt-rewrite directive, `CLAUDE.md`/`AGENTS.md`, every installed
